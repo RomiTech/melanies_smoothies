@@ -1,0 +1,214 @@
+-- TRYING TO GET DORA WORKING
+-- KEY FUNCTIONS AND DATABASES WERE MISSING
+
+-- 1. Ensure you are using the correct admin role
+USE ROLE ACCOUNTADMIN;
+
+-- 2. Create the utility database where DORA will live
+CREATE DATABASE IF NOT EXISTS UTIL_DB;
+
+-- 3. Create the external grader function.
+-- Refer to the {Link: Snowflake Auto-Grader Guide https://www.snowflake.com/en/developers/guides/snowflake-auto-grader/} for the complete code,
+-- specifically for the API_INTEGRATION setup and the URL for the external function.
+
+-- Code from URL given --
+create or replace api integration dora_api_integration 
+api_provider = aws_api_gateway 
+api_aws_role_arn = 'arn:aws:iam::321463406630:role/snowflakeLearnerAssumedRole' 
+enabled = true 
+--api_allowed_prefixes = ('https://awy6hshxy4.execute-api.us-west-2.amazonaws.com/dev/edu_dora');
+--Maybe I need to put MY account data in??? 
+api_allowed_prefixes = ('https://awy6hshxy4.execute-api.us-west-2.amazonaws.com/dev/edu_dora');
+
+show integrations;
+
+--Next, create the grader function. This function will be used for validating the successful completion of lab steps in your account.
+
+use role accountadmin;
+
+create database util_db;
+
+create or replace external function util_db.public.grader(        
+ step varchar     
+ , passed boolean     
+ , actual integer     
+ , expected integer    
+ , description varchar) 
+ returns variant 
+ api_integration = dora_api_integration 
+ context_headers = (current_timestamp,current_account, current_statement, current_account_name) 
+ as 'https://awy6hshxy4.execute-api.us-west-2.amazonaws.com/dev/edu_dora/grader'  
+;  
+
+--To confirm that the auto-grader is functioning as intended, open a new SQL worksheet and run the following code:
+
+use role accountadmin;
+use database util_db;
+use schema public;
+
+select grader(step, (actual = expected), actual, expected, description) as graded_results from (SELECT
+ 'AUTO_GRADER_IS_WORKING' as step
+ ,(select 123) as actual
+ ,123 as expected
+ ,'The Snowflake auto-grader has been successfully set up in your account!' as description
+);
+
+--Next, you'll create the greeting function. This function will link your Snowflake account to our badging system. 
+--If you don't complete this step, you'll risk not receiving your badge.
+
+create or replace external function util_db.public.greeting(
+      email varchar
+    , firstname varchar
+    , middlename varchar
+    , lastname varchar)
+returns variant
+api_integration = dora_api_integration
+context_headers = (current_timestamp, current_account, current_statement, current_account_name) 
+as 'https://awy6hshxy4.execute-api.us-west-2.amazonaws.com/dev/edu_dora/greeting'
+; 
+
+--Next, you'll need to register your name and email. You'll do this by running the greeting function with your name and email. 
+--This information will be used to issue your badge. Here are some important rules to follow PRIOR to running the SQL below:
+
+--Do not use all capital letters.
+--Do not use all lowercase letters.
+--Do not use CamelCase – put spaces between your words if there are spaces between the words in your name.
+--You must enter both a first and last name. Middle names are optional. Single letters do not count as names.
+--You can use accents or letters from any language.
+--You can use as many words as you want. For example, you can have a 3-word first name, a 3-word middle name and a 3-word last name!
+--But please ensure there are spaces between the words in your name.
+--Ensure that you follow these rules when running the SQL below in a new worksheet:
+
+use role accountadmin;
+use database util_db;
+
+-- Replace <email> with your email address
+-- Replace <first name> <middle name> <last name> with your names
+select util_db.public.greeting('Michael.Ward@wkkellogg.com', 'Michael', '', 'Ward');
+
+-- select util_db.public.greeting('my@email.com', 'Snowflake', 'The', 'Bear');
+
+
+--That's it! You should now have the auto-grader correctly provisioned in your account.
+
+
+--Test!
+
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+  SELECT 'DABW001' as step
+ ,( select count(*)
+    from SMOOTHIES.PUBLIC.FRUIT_OPTIONS) as actual
+ , 25 as expected
+ ,'Fruit Options table looks good' as description
+);
+
+--PASSED!
+
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+SELECT 'DABW002' as step
+ ,(select IFF(count(*)>=5,5,0)
+    from (select ingredients from smoothies.public.orders
+    group by ingredients)
+ ) as actual
+ ,  5 as expected
+ ,'At least 5 different orders entered' as description
+);
+#PASSED
+
+
+-- Did you load the FRUIT)OPTIONS table?
+-- Set your worksheet drop lists  
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+  SELECT 'DABW003' as step
+ ,(select ascii(fruit_name) from smoothies.public.fruit_options
+where fruit_name ilike 'z%') as actual
+ , 90 as expected
+ ,'A mystery check for the inquisitive' as description
+);
+
+-- Lesson 5  - Add the Kitchen Screen
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+  SELECT 'DABW004' as step
+ ,(select count(*) from smoothies.information_schema.columns
+    where table_schema = 'PUBLIC' 
+    and table_name = 'ORDERS'
+    and column_name = 'ORDER_FILLED'
+    and column_default = 'FALSE'
+    and data_type = 'BOOLEAN') as actual
+ , 1 as expected
+ ,'Order Filled is Boolean' as description
+);
+
+
+--  END OF Lesson 6.  Updated Pending order screen and inseted a "broken" limit of 5 fruits --
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+ SELECT 'DABW005' as step
+ ,(select IFF(count(*)>=2, 2, 0) as num_sis_apps
+    from (
+        select count(*) as tally
+        from snowflake.account_usage.query_history
+        where query_text like 'execute streamlit%'
+        group by query_text)
+ ) as actual
+ , 2 as expected
+ ,'There seem to be 2 SiS Apps' as description
+);
+
+
+-- Part way through Lesson 8.  Learning about Variables and Functions.. (?)
+-- Set your worksheet drop lists
+-- Set these local variables according to the instructions
+set this = -10.5;
+set that = 2;
+set the_other =  1000;
+
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+  SELECT 'DABW006' as step
+ ,( select util_db.public.sum_mystery_bag_vars($this,$that,$the_other)) as actual
+ , 991.5 as expected
+ ,'Mystery Bag Function Output' as description
+);
+
+
+-- ............................................................................................................
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+ SELECT 'DABW007' as step
+ ,( select hash(neutralize_whining('bUt mOm i wAsHeD tHe dIsHes yEsTeRdAy'))) as actual
+ , -4759027801154767056 as expected
+ ,'WHINGE UDF Works' as description
+);
+
+
+
+--...............................................................................................................
+
+-- Last Test
+
+-- Set your worksheet drop lists
+-- DO NOT EDIT ANYTHING BELOW THIS LINE
+select GRADER(step, (actual = expected), actual, expected, description) as graded_results from (
+   SELECT 'DABW008' as step
+   ,( select sum(hash_ing) from
+      (select hash(ingredients) as hash_ing
+         from smoothies.public.orders
+         where order_ts is not null
+         and name_on_order is not null
+         and (name_on_order = 'Kevin' and order_filled = FALSE and hash_ing = 7976616299844859825)
+         or (name_on_order ='Divya' and order_filled = TRUE and hash_ing = -6112358379204300652)
+         or (name_on_order ='Xi' and order_filled = TRUE and hash_ing = 1016924841131818535))
+      ) as actual
+   , 2881182761772377708 as expected
+   ,'Followed challenge lab directions' as description
+);
