@@ -1,0 +1,219 @@
+-- Collection of SQL queries for smoothie shop database setup and management
+-- Co-authored with CoCo
+-- CREATE A TABLE OF FRUITS TO SELECT FROM
+--create table FRUIT_OPTIONS (
+--   FRUIT_ID NUMBER, 
+--    FRUIT_NAME TEXT
+    -- supported types: https://docs.snowflake.com/en/sql-reference/intro-summary-data-types
+--    )
+    -- comment = '<comment>';
+
+    create file format smoothies.public.two_headerrow_pct_delim
+  type = CSV,
+  skip_header = 2,
+  field_delimiter = '%',
+  trim_space = TRUE
+;
+-- ...............................................................................
+
+--USE DATABASE SMOOTHIES;
+--USE SCHEMA PUBLIC;
+--CREATE STAGE my_stage;
+
+-- ...............................................................................
+
+-- Create a new table called ORDERS.
+-- it will only need one column of type text 
+-- BUT the text will be limited to 200 char.
+-- VARCHR(200) and STRING(200) would do the same thing.
+
+create table ORDERS (
+    INGREDIENTS TEXT(200)
+    -- , <col2_name> <col2_type>
+    -- supported types: https://docs.snowflake.com/en/sql-reference/intro-summary-data-types
+    );
+    -- comment = '<comment>';
+
+
+-- Create a new table called ORDERS.
+-- it will only need one column of type text 
+-- BUT the text will be limited to 200 char.
+-- VARCHR(200) and STRING(200) would do the same thing.
+
+
+
+-- ...............................................................................
+
+
+CREATE TABLE IF NOT EXISTS SMOOTHIES.PUBLIC.ORDERS (
+    INGREDIENTS TEXT(200)
+);
+
+
+-- ...............................................................................
+
+
+-- insert into smoothies.public.orders(ingredients) values ('Cantaloupe Guava Jackfruit Elderberries Figs ')
+alter table SMOOTHIES.PUBLIC.ORDERS add column name_on_order varchar(100)
+
+alter table SMOOTHIES.PUBLIC.ORDERS add column ORDER_FILLED BOOLEAN DEFAULT FALSE
+
+
+-- ...............................................................................
+-- here, all the fruits in a texst file are uploaded and then arranged to be pushed into the FRUITS table.
+
+SELECT $1,$2
+from @smoothies.public.my_uploaded_files/fruits_available_for_smoothies.txt (file_format => smoothies.public.two_headerrow_pct_delim);
+
+COPY INTO smoothies.public.fruit_options
+FROM @smoothies.public.my_uploaded_files
+FILES = ('fruits_available_for_smoothies.txt')
+FILE_FORMAT = (FORMAT_NAME = smoothies.public.two_headerrow_pct_delim)
+ON_ERROR = ABORT_STATEMENT
+VALIDATION_MODE = RETURN_ERRORS
+PURGE = TRUE;
+
+COPY INTO smoothies.public.fruit_options
+FROM 
+( select $2 as FRUIT_ID, $1 as FRUIT_NAME from @smoothies.public.my_uploaded_files/fruits_available_for_smoothies.txt )
+FILE_FORMAT = (FORMAT_NAME = smoothies.public.two_headerrow_pct_delim)
+ON_ERROR = ABORT_STATEMENT
+PURGE = TRUE;
+
+-- The KITCHEN app needs a column to mark COMPLETED orders.  T/F
+-- To clean up the database, all records that do not have names will be marked as TRUE (completed)
+
+update smoothies.public.orders
+set order_filled = true
+where name_on_order is null;
+
+-- ...............................................................................
+
+
+-- Create a SEQUENCE that provides a unique numbrer for every line in a table.
+-- this is part of lesson 6,Improvements to pending orders.  
+-- Here a SEQUENCE is being created to provide a UNIQUE ID NUMBER for each order.
+create sequence order_seq
+    start = 1
+    increment = 2
+    ORDER
+    comment = 'Provide a unique id for each smoothie order';
+
+-- ...............................................................................
+
+
+-- With the Lesson 6 need to add a unique number column, I need to CLEAR OFF the whole table.
+-- This ereases ALL the data on the orders table so I can add a new column.
+TRUNCATE TABLE  IF EXISTS SMOOTHIES.PUBLIC.ORDERS;
+
+
+-- Now I need to add the unique ID column that uses the SEQUENCE I created earlier
+alter table SMOOTHIES.PUBLIC.ORDERS 
+add column order_uid integer --adds the column
+default smoothies.public.order_seq.nextval  --sets the value of the column to sequence
+constraint order_uid unique enforced; --makes sure there is always a unique value in the column
+
+
+-- ...............................................................................
+-- When auditing permissions, I found that not all of my database objects were owned by SYSADMIN.
+-- But I could not transfer ownership because access PUBLIC access was granted through ACCOUNTADMIN.
+-- so I am going to remove all assigned permissions and start over.
+
+GRANT OWNERSHIP ON TABLE SMOOTHIES.PUBLIC.ORDERS TO ROLE SYSADMIN REVOKE CURRENT GRANTS;
+
+
+
+-- ...............................................................................
+
+
+--  the course work actually says: "We've altered the table several times already so just to make sure everyone has the same definition, let's drop and recreate the table."
+--  so I guess...
+-- I can see that a timestamp is added. ans something called a CONSTRAINT.
+-- While the SEQUENCE provides unique numbers, I guess the constraint defines the column as HAVING UNIQUE NUMBERS.
+-- I do not think it ALSO creates unique numbers.
+
+create or replace table smoothies.public.orders (
+       order_uid integer default smoothies.public.order_seq.nextval,
+       order_filled boolean default false,
+       name_on_order varchar(100),
+       ingredients varchar(200),
+       constraint order_uid unique (order_uid),
+       order_ts timestamp_ltz default current_timestamp()
+);
+
+
+-- ...............................................................................
+
+
+-- the course work skipped a grove again,  Now I need to add in a MERGE statement.
+-- I think what it is doing is taking the data from the PENDING ORDERS screen and merging the changes back into the database table.
+
+
+    -- .....................................................................
+
+
+Create function sum_mystery_bag_vars(var1 number, var2 number, var3 number) 
+returns number as 'select var1+var2+var3';
+
+--  WHY WAS THIS SO HARD TO FIGURE OUT???
+
+CREATE OR REPLACE FUNCTION  NEUTRALIZE_WHINING(Phrase TEXT) 
+RETURNS TEXT as 'select INITCAP(Phrase)';
+
+
+
+alter table smoothies.public.fruit_options add column SEARCH_ON TEXT
+
+update smoothies.public.fruit_options
+set SEARCH_ON = FRUIT_NAME
+
+update smoothies.public.fruit_options
+set SEARCH_ON = 'Apple'
+where FRUIT_NAME = 'Apples'
+
+update smoothies.public.fruit_options
+set SEARCH_ON = 'Banana'
+where FRUIT_NAME = 'Bananas'
+
+update smoothies.public.fruit_options
+set SEARCH_ON = 'Banana'
+where FRUIT_NAME = 'Bananas'
+
+update smoothies.public.fruit_options
+set SEARCH_ON = 'Blueberry'
+where FRUIT_NAME = 'Blueberries'
+
+
+
+
+-- I had an issue with permissions
+-- this was NOT the RIGHT answer, but it sort of worked.
+-- I am keeping it because it is content that was not in any classes I saw
+
+-- Streamlit apps are schema-level objects in Snowflake.
+-- Therefore, they are located in a schema under a database.
+-- They also rely on virtual warehouses to provide the compute resource.
+-- We recommend starting with X-SMALL warehouses and upgrade when needed.
+
+-- To help your team create Streamlit apps successfully, consider running the following script.
+-- Please note that this is an example setup.
+-- You can modify the script to suit your needs.
+
+-- If you want to create a new database for Streamlit Apps, run
+CREATE DATABASE STREAMLIT_APPS;
+-- If you want to create a specific schema under the database, run
+CREATE SCHEMA <SCHEMA_NAME>;
+-- Or, you can use the PUBLIC schema that was automatically created with the database.
+
+-- If you want all roles to create Streamlit apps in the PUBLIC schema, run
+GRANT USAGE ON DATABASE STREAMLIT_APPS TO ROLE PUBLIC;
+GRANT USAGE ON SCHEMA STREAMLIT_APPS.PUBLIC TO ROLE PUBLIC;
+GRANT CREATE STREAMLIT ON SCHEMA STREAMLIT_APPS.PUBLIC TO ROLE PUBLIC;
+GRANT CREATE STAGE ON SCHEMA STREAMLIT_APPS.PUBLIC TO ROLE PUBLIC;
+
+-- Don't forget to grant USAGE on a warehouse.
+GRANT USAGE ON WAREHOUSE <WAREHOUSE_NAME> TO ROLE PUBLIC;
+
+-- If you only want certain roles to create Streamlit apps,
+-- or want to enable a different location to store the Streamlit apps,
+-- change the database, schema, and role names in the above commands.
