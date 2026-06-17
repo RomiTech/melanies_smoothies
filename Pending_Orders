@@ -1,0 +1,86 @@
+# Import python packages
+import streamlit as st
+from snowflake.snowpark.context import get_active_session
+# Adding in the Table Select
+from snowflake.snowpark.functions import col, when_matched
+
+# Write directly to the app
+st.title(f":cup_with_straw: Pending Smoothie Orders:cup_with_straw:")
+st.write('Orders that need to be filled.')
+
+
+# ------------------ Lesson 5 Adding the Kitchen interface ------------------------
+#  session = get_active_session()
+# # my_dataframe = session.table("smoothies.public.fruit_options").select(col('FRUIT_NAME'))
+# # a filter was added so only PENDING orders can be seen.
+# # Notice how the \ is used to continue the text onto the next line.  Spacing is still 4.
+# my_dataframe = session.table("smoothies.public.orders") \
+#     .filter(col("ORDER_FILLED") == 0) \
+#     .collect()
+# 
+# 
+# # the course leaves me hanging here and says try it yourself.  I don't remember making a table with checkboxes. 
+# # maybe I did.   Here is the guidance I got from a search.   In this version, I create an editable table.
+# # and put checkboxes in then disable the other columns of the table.
+# 
+# edited_data = st.data_editor (
+#     my_dataframe,
+#     column_config = {
+#         "ORDER_FILLED": st.column_config.CheckboxColumn(
+#             "Order Filled",
+#             help="Select or deslect this row",
+#             default=False,
+#         )
+#     },
+#     disabled=["INGGREDIENTS","NAME_ON_ORDER"], #columns that you DO NOT want changed
+#     hide_index=False
+# )
+# 
+#-----------------------------------------------------------------------------------
+# Here is what the course is telling me to do... AFTER TURNING ME LOOSE.
+
+
+session = get_active_session()
+my_dataframe = session.table("smoothies.public.orders") \
+    .filter(col("ORDER_FILLED") == 0) \
+    .collect()
+
+
+# Near the END of lesson 6, this IF was added to cause the table to only show up
+# when orders were pending.
+
+if my_dataframe:
+    
+    # Note: the "st.data_editor()" command DRAWS the table on the canvas.
+    # Assigning "editable_df" creates a handle to reference the chart that was created.
+    # this is used to access the table, Change values and read them to get changes made by user.
+    
+    editable_df = st.data_editor(my_dataframe)
+    submitted = st.button("Submit")
+    if submitted:
+        
+        # Moved success pop-up to appear AFTER the merge is successful
+        # st.success("Someone clicked the button.", icon="👍")    
+        # the course work skipped a grove again, 
+        # No clear explanation of what,where, and why. 
+        # Now I need to add in a MERGE statement.
+        # I think what it is doing is taking the data 
+        # from the PENDING ORDERS screen and merging the 
+        # changes back into the database table.
+        
+        og_dataset = session.table("smoothies.public.orders")
+        edited_dataset = session.create_dataframe(editable_df)
+        
+        #Put the MERGE in a TRY block to test for success.
+        
+        try:
+            og_dataset.merge(edited_dataset
+                             , (og_dataset['ORDER_UID'] == edited_dataset['ORDER_UID'])
+                             , [when_matched().update({'ORDER_FILLED': edited_dataset['ORDER_FILLED']})]
+                            )
+            st.success("Someone clicked the button.", icon="👍")
+        except:
+            st.write('Something went wrong.')
+else:
+    st.success('There are no pending orders right now',icon="👍")
+
